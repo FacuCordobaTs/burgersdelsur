@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useMesaStore } from '@/store/mesaStore'
 import { useCarritoStore } from '@/store/carritoStore'
 import { toast } from 'sonner'
+import { PIRU_WS_URL } from '@/lib/api'
 
 interface ItemPedido {
   id: number
@@ -49,7 +50,7 @@ interface UseClienteWebSocketReturn {
   clearConfirmacionCancelada: () => void
 }
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://api.piru.app'
+const WS_URL = PIRU_WS_URL
 
 export const useClienteWebSocket = (): UseClienteWebSocketReturn => {
   const {

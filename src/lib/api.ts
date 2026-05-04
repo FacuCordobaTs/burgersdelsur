@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.piru.app/api'
+/** Producción fija (single-tenant); no usar localhost ni .env para evitar builds sin variables. */
+export const PIRU_API_URL = 'https://api.piru.app/api'
+export const PIRU_WS_URL = 'wss://api.piru.app'
 
 export class ApiError extends Error {
   status: number
@@ -16,7 +18,7 @@ async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_URL}${endpoint}`
+  const url = `${PIRU_API_URL}${endpoint}`
 
   try {
     const response = await fetch(url, {

@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ArrowLeft, Loader2, MapPin, Store, Zap, Truck, AlertTriangle, Package, Tag, X, CreditCard, Wallet } from 'lucide-react'
+import { PIRU_API_URL } from '@/lib/api'
 import { AddressAutocomplete } from '@/components/AddressAutocomplete'
 import { MisPedidosDrawer } from '@/components/MisPedidosDrawer'
 
@@ -61,7 +62,7 @@ const CheckoutDelivery = () => {
     useEffect(() => {
         const fetchRestaurante = async () => {
             try {
-                const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+                const url = PIRU_API_URL
                 const response = await fetch(`${url}/public/restaurante/${username}`)
                 const data = await response.json()
                 if (data.success && data.data.restaurante) {
@@ -130,7 +131,7 @@ const CheckoutDelivery = () => {
         setValidandoCodigo(true)
         setCodigoError(null)
         try {
-            const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+            const url = PIRU_API_URL
             const res = await fetch(`${url}/public/descuentos/validar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -185,7 +186,7 @@ const CheckoutDelivery = () => {
             setIsCheckingZona(true)
             setFueraDeZona(false)
             try {
-                const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+                const url = PIRU_API_URL
                 const res = await fetch(`${url}/public/restaurante/${cart.restauranteId}/check-zona?lat=${lat}&lng=${lng}`)
                 const data = await res.json()
 
@@ -234,7 +235,7 @@ const CheckoutDelivery = () => {
 
         setLoading(true)
         try {
-            const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+            const url = PIRU_API_URL
             const endpoint = tipoPedido === 'delivery' ? '/public/delivery/create' : '/public/takeaway/create'
 
             const payload: any = {

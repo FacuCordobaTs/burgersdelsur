@@ -12,9 +12,9 @@ import {
 } from 'lucide-react'
 import { usePreventBackNavigation } from '@/hooks/usePreventBackNavigation'
 import { toPng } from 'html-to-image'
+import { PIRU_API_URL } from '@/lib/api'
 
-
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.piru.app/api'
+const API_URL = PIRU_API_URL
 
 // Interface para el estado de subtotales del cliente
 interface SubtotalCliente {

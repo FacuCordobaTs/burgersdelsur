@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { CheckCircle2, Copy, Loader2, Store, Truck,  MapPin, Clock, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { PIRU_API_URL, PIRU_WS_URL } from '@/lib/api'
 
 const SuccessGrupal = () => {
   const { qrToken } = useParams()
@@ -27,7 +28,7 @@ const SuccessGrupal = () => {
     const fetchRestaurante = async () => {
       if (!orderInfo?.token) return
       try {
-        const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+        const url = PIRU_API_URL
         const res = await fetch(`${url}/mesa/join/${orderInfo.token}`)
         const data = await res.json()
         if (data.success && data.data?.restaurante) {
@@ -53,7 +54,7 @@ const SuccessGrupal = () => {
     if (!orderInfo?.pedidoId || !orderInfo?.tipoPedido) return
     const fetchStatus = async () => {
       try {
-        const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+        const url = PIRU_API_URL
         const res = await fetch(`${url}/public/pedido/${orderInfo.tipoPedido}/${orderInfo.pedidoId}/status`)
         const data = await res.json()
         if (data.success) {
@@ -71,11 +72,7 @@ const SuccessGrupal = () => {
   useEffect(() => {
     if (!orderInfo?.pedidoId || !orderInfo?.tipoPedido) return
 
-    const wsBase = import.meta.env.VITE_WS_URL
-      ? import.meta.env.VITE_WS_URL
-      : import.meta.env.VITE_API_URL
-        ? import.meta.env.VITE_API_URL.replace('http', 'ws').replace('/api', '')
-        : 'ws://localhost:3000'
+    const wsBase = PIRU_WS_URL
 
     const ws = new WebSocket(`${wsBase}/ws/public/${orderInfo.tipoPedido}/${orderInfo.pedidoId}`)
 
@@ -113,7 +110,7 @@ const SuccessGrupal = () => {
       if (isChecking) return
       isChecking = true
       try {
-        const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+        const url = PIRU_API_URL
         const res = await fetch(`${url}/public/pedido/${orderInfo.tipoPedido}/${orderInfo.pedidoId}/status`)
         const data = await res.json()
         if (data.success && data.pagado) {

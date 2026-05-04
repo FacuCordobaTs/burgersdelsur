@@ -8,6 +8,7 @@ import {
     Trash2, ArrowLeft,
     Package, Receipt, UtensilsCrossed, Utensils, Clock, Sparkles, Check, X
 } from 'lucide-react'
+import { PIRU_API_URL } from '@/lib/api'
 import { ProductDetailDrawer } from '@/components/ProductDetailDrawer'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { MisPedidosDrawer } from '@/components/MisPedidosDrawer'
@@ -313,7 +314,7 @@ const MenuDelivery = () => {
         if (!telefono || !restauranteId) return
         setLoadingPuntos(true)
         try {
-            const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+            const url = PIRU_API_URL
             const res = await fetch(`${url}/public/restaurante/${restauranteId}/cliente/${encodeURIComponent(telefono)}`)
             if (res.ok) {
                 const data = await res.json()
@@ -336,7 +337,7 @@ const MenuDelivery = () => {
     useEffect(() => {
         const fetchRestaurante = async () => {
             try {
-                const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+                const url = PIRU_API_URL
                 const res = await fetch(`${url}/public/restaurante/${username}`)
                 if (!res.ok) {
                     throw new Error('Restaurante no encontrado')
@@ -560,7 +561,7 @@ const MenuDelivery = () => {
         if (!nombreParaSala.trim() || !restaurante?.id) return
         setCreandoSala(true)
         try {
-            const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+            const url = PIRU_API_URL
             const res = await fetch(`${url}/public/sala/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

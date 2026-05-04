@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { MapPin, Store, Truck, AlertTriangle, Loader2, Pencil, Check, X, Tag } from 'lucide-react'
 import { AddressAutocomplete } from '@/components/AddressAutocomplete'
+import { PIRU_API_URL } from '@/lib/api'
 import type { CheckoutDeliveryData, CheckoutEditSemaphore } from '@/store/mesaStore'
 
 interface CheckoutDeliveryGrupalProps {
@@ -89,7 +90,7 @@ export function CheckoutDeliveryGrupal({
       setIsCheckingZona(true)
       setFueraDeZona(false)
       try {
-        const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+        const url = PIRU_API_URL
         const res = await fetch(`${url}/public/restaurante/${restauranteId}/check-zona?lat=${lat}&lng=${lng}`)
         const data = await res.json()
 
@@ -143,7 +144,7 @@ export function CheckoutDeliveryGrupal({
     setValidandoCodigo(true)
     setCodigoError(null)
     try {
-      const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+      const url = PIRU_API_URL
       const res = await fetch(`${url}/public/descuentos/validar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -8,6 +8,7 @@ import { MisPedidosDrawer } from '@/components/MisPedidosDrawer'
 import { OrderSummaryItemDetails } from '@/components/OrderSummaryItemDetails'
 import { inferDeliveryFeeCobrado, orderItemLineSubtotalsFromApi } from '@/lib/orderSummaryItem'
 import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react'
+import { PIRU_API_URL, PIRU_WS_URL } from '@/lib/api'
 
 const MP_CHECKOUT_LAUNCHED_KEY = 'mpCheckoutLaunchedPedidoId'
 
@@ -86,7 +87,7 @@ const PedidoStatus = () => {
         if (!id) return
         const fetchOrderInfo = async () => {
             try {
-                const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+                const url = PIRU_API_URL
                 const response = await fetch(`${url}/public/pedido-info/${id}`)
                 const data = await response.json()
                 if (data.success && data.data) {
@@ -164,7 +165,7 @@ const PedidoStatus = () => {
             if (isChecking) return
             isChecking = true
             try {
-                const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+                const url = PIRU_API_URL
                 const response = await fetch(`${url}/public/pedido/${orderInfo.tipoPedido}/${orderInfo.pedidoId}/status`)
                 const data = await response.json()
                 if (data.success && data.pagado) {
@@ -205,11 +206,7 @@ const PedidoStatus = () => {
         const connectWebSocket = () => {
             if (isConnecting) return
             isConnecting = true
-            const wsBase = import.meta.env.VITE_WS_URL
-                ? import.meta.env.VITE_WS_URL
-                : import.meta.env.VITE_API_URL
-                    ? import.meta.env.VITE_API_URL.replace('http', 'ws').replace('/api', '')
-                    : 'ws://localhost:3000'
+            const wsBase = PIRU_WS_URL
 
             ws = new WebSocket(`${wsBase}/ws/public/${orderInfo.tipoPedido}/${orderInfo.pedidoId}`)
             ws.onopen = () => { isConnecting = false }
@@ -290,7 +287,7 @@ const PedidoStatus = () => {
     }) => {
         setIsCreatingMP(true)
         try {
-            const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+            const url = PIRU_API_URL
             const response = await fetch(`${url}/mp/process-brick`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -338,7 +335,7 @@ const PedidoStatus = () => {
     const handleMercadoPagoCheckoutRedirect = async () => {
         setIsCreatingMP(true)
         try {
-            const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+            const url = PIRU_API_URL
             const response = await fetch(`${url}/mp/crear-preferencia-externo`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

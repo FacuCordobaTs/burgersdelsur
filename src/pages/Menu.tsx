@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useMesaStore } from '@/store/mesaStore'
 import { useClienteWebSocket } from '@/hooks/useClienteWebSocket'
-import { mesaApi } from '@/lib/api'
+import { mesaApi, PIRU_API_URL } from '@/lib/api'
 import { toast } from 'sonner'
 import {
   Trash2, ArrowLeft,
@@ -277,7 +277,7 @@ const Menu = () => {
     const token = urlQrToken
     const poll = async () => {
       try {
-        const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+        const url = PIRU_API_URL
         const res = await fetch(`${url}/public/sala/${token}/order-created`)
         const data = await res.json()
         if (data.success && data.order) {

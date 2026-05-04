@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
+import { PIRU_API_URL, PIRU_WS_URL } from '@/lib/api'
 import { ArrowLeft, Package, Loader2, Truck, Store, Clock, CheckCircle2 } from 'lucide-react'
 
 type Pedido = {
@@ -147,7 +148,7 @@ export function MisPedidosDrawer({
         setLoading(true)
         setError(null)
         try {
-            const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+            const url = PIRU_API_URL
             const res = await fetch(`${url}/public/restaurante/${restauranteId}/mis-pedidos/${encodeURIComponent(tel.trim())}`)
             const data = await res.json()
             if (data.success) {
@@ -189,9 +190,7 @@ export function MisPedidosDrawer({
             return
         }
 
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
-        const wsBase = apiUrl.replace(/^http/, 'ws').replace(/\/api\/?$/, '')
-        const wsUrl = `${wsBase}/ws/tracking/${restauranteId}/${encodeURIComponent(telefono.trim())}`
+        const wsUrl = `${PIRU_WS_URL}/ws/tracking/${restauranteId}/${encodeURIComponent(telefono.trim())}`
 
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
