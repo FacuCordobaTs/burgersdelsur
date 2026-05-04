@@ -1,0 +1,1000 @@
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate, useParams } from 'react-router'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { useMesaStore } from '@/store/mesaStore'
+import { useClienteWebSocket } from '@/hooks/useClienteWebSocket'
+import { mesaApi } from '@/lib/api'
+import { toast } from 'sonner'
+import {
+  Trash2, ArrowLeft,
+  Wifi, WifiOff, Package, ChefHat, UtensilsCrossed, Receipt, Utensils,
+  Check, X, Users, Loader2, Link as LinkIcon
+} from 'lucide-react'
+import { ProductDetailDrawer } from '@/components/ProductDetailDrawer'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { CheckoutDeliveryGrupal } from '@/components/CheckoutDeliveryGrupal'
+
+const Menu = () => {
+  const navigate = useNavigate()
+  const { qrToken: urlQrToken } = useParams<{ qrToken?: string }>()
+  const { mesa, productos, clientes, clienteNombre, clienteId, qrToken, isHydrated, sessionEnded, restaurante, pedido, checkoutDeliveryData, checkoutEditSemaphore, setMesa, setProductos, setPedidoId, setPedido, setRestaurante, setQrToken, setClientes, setCheckoutDeliveryData, setCheckoutEditSemaphore } = useMesaStore()
+  const { state: wsState, isConnected, sendMessage, confirmacionGrupal, confirmacionCancelada, clearConfirmacionCancelada } = useClienteWebSocket()
+
+  const [carritoAbierto, setCarritoAbierto] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState<typeof productos[0] | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<string>('All')
+
+  // ESTADO PARA EL MODAL DE CONFIRMACIÓN GRUPAL
+  const [confirmacionGrupalOpen, setConfirmacionGrupalOpen] = useState(false)
+
+  // Para sala: mostrar checkout en lugar de ir directo a confirmación
+  const esSala = typeof window !== 'undefined' && window.location.pathname.includes('/sala/')
+  const [mostrarCheckoutEnCarrito, setMostrarCheckoutEnCarrito] = useState(false)
+
+  const abrirCarrito = useCallback(() => {
+    window.history.pushState({ drawer: 'carrito' }, '')
+    setCarritoAbierto(true)
+  }, [])
+
+  const cerrarCarrito = useCallback(() => {
+    setCarritoAbierto(false)
+    setMostrarCheckoutEnCarrito(false)
+    if (window.history.state?.drawer === 'carrito') {
+      window.history.back()
+    }
+  }, [])
+
+  const abrirProductoDrawer = useCallback(() => {
+    window.history.pushState({ drawer: 'producto' }, '')
+    setDrawerOpen(true)
+  }, [])
+
+  const cerrarProductoDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setTimeout(() => setSelectedProduct(null), 300)
+    if (window.history.state?.drawer === 'producto') {
+      window.history.back()
+    }
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (carritoAbierto) {
+        setCarritoAbierto(false)
+        event.preventDefault()
+        return
+      }
+      if (drawerOpen) {
+        setDrawerOpen(false)
+        setTimeout(() => setSelectedProduct(null), 300)
+        event.preventDefault()
+        return
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [carritoAbierto, drawerOpen])
+
+  // Sincronizar sala cuando la URL tiene un token distinto al del store (ej: usuario entró por otro link)
+  useEffect(() => {
+    if (!isHydrated || !esSala || !urlQrToken) return
+    if (urlQrToken === qrToken) return
+    const syncSala = async () => {
+      try {
+        const response = await mesaApi.join(urlQrToken) as { success?: boolean; data?: any }
+        if (response.success && response.data) {
+          setQrToken(urlQrToken)
+          setMesa(response.data.mesa)
+          setProductos(response.data.productos || [])
+          setPedidoId(response.data.pedido.id)
+          setPedido(response.data.pedido)
+          setRestaurante(response.data.restaurante || null)
+          setClientes([])
+          setCheckoutDeliveryData(null)
+          setCheckoutEditSemaphore(null)
+          // Guardar tema para sala (colores del restaurante)
+          const rest = response.data.restaurante
+          if (rest?.colorPrimario && rest?.colorSecundario) {
+            sessionStorage.setItem(`theme_sala_${urlQrToken}`, JSON.stringify({
+              primario: rest.colorPrimario,
+              secundario: rest.colorSecundario
+            }))
+          }
+        }
+      } catch {
+        toast.error('No se pudo cargar la sala')
+      }
+    }
+    syncSala()
+  }, [isHydrated, esSala, urlQrToken, qrToken])
+
+  useEffect(() => {
+    if (!isHydrated) return
+    if (sessionEnded) return
+
+    if (!clienteNombre || (!qrToken && !urlQrToken)) {
+      toast.error('Debes ingresar tu nombre primero')
+      const isSala = window.location.pathname.includes('/sala/')
+      const token = urlQrToken || qrToken || 'invalid'
+      navigate(isSala ? `/sala/${token}/nombre` : `/mesa/${token}`)
+      return
+    }
+
+    if (wsState?.estado) {
+      if (wsState.estado === 'preparing') {
+        // Carritos: ir a pagar primero
+        if (restaurante?.esCarrito) {
+          navigate('/pedido-cerrado')
+        } else {
+          navigate('/pedido-confirmado')
+        }
+      } else if (wsState.estado === 'closed') {
+        navigate('/pedido-cerrado')
+      }
+    }
+  }, [clienteNombre, qrToken, wsState?.estado, navigate, isHydrated, sessionEnded, restaurante?.esCarrito])
+
+  // Lógica de productos y categorías (se mantiene igual)
+  const categorias = ['All', ...Array.from(new Set(productos.map(p => p.categoria).filter(Boolean)))]
+
+  const productosPorCategoria = productos.reduce((acc, producto) => {
+    const categoria = producto.categoria || 'Sin categoría'
+    if (!acc[categoria]) {
+      acc[categoria] = []
+    }
+    acc[categoria].push(producto)
+    return acc
+  }, {} as Record<string, typeof productos>)
+
+  const productosFiltrados = selectedCategory === 'All'
+    ? productos
+    : productos.filter(p => p.categoria === selectedCategory)
+
+  const categoriasOrdenadas = Object.keys(productosPorCategoria).sort((a, b) => {
+    if (a === 'Sin categoría') return 1
+    if (b === 'Sin categoría') return -1
+    return a.localeCompare(b)
+  })
+
+  const abrirDetalleProducto = (producto: typeof productos[0]) => {
+    setSelectedProduct(producto)
+    abrirProductoDrawer()
+  }
+
+  const agregarAlPedido = (producto: typeof productos[0] | any, cantidad: number = 1, ingredientesExcluidos?: number[], agregados?: any[]) => {
+    if (!clienteNombre) return
+    let precioBase = parseFloat(String(producto.precio))
+    if (producto.descuento && producto.descuento > 0) {
+      precioBase = precioBase * (1 - producto.descuento / 100)
+    }
+    const precioAgregados = (agregados || []).reduce((sum: number, ag: any) => sum + parseFloat(ag.precio || '0'), 0)
+    const precioUnitario = (precioBase + precioAgregados).toFixed(2)
+    sendMessage({
+      type: 'AGREGAR_ITEM',
+      payload: {
+        productoId: producto.id,
+        clienteNombre,
+        cantidad,
+        precioUnitario,
+        imagenUrl: producto.imagenUrl,
+        ingredientesExcluidos: ingredientesExcluidos || [],
+        agregados: agregados || []
+      },
+    })
+    // Abrir el carrito automáticamente tras agregar un producto
+    setTimeout(() => abrirCarrito(), 350)
+  }
+
+  const handleEliminarItem = (itemPedidoId: number) => {
+    sendMessage({ type: 'ELIMINAR_ITEM', payload: { itemId: itemPedidoId }, })
+  }
+
+  // --- LÓGICA DE CONFIRMACIÓN GRUPAL ---
+
+  // Botón principal del carrito: "Continuar" (sala) o "Confirmar Pedido" (mesa)
+  const handleBotonPrincipalCarrito = () => {
+    if (!clienteNombre || !clienteId) return
+
+    if (esSala) {
+      // Sala: mostrar checkout de delivery/takeaway
+      setMostrarCheckoutEnCarrito(true)
+      return
+    }
+
+    // Mesa: flujo original de confirmación grupal
+    iniciarConfirmacionPedido()
+  }
+
+  // Iniciar el proceso de confirmación grupal (votación)
+  const iniciarConfirmacionPedido = () => {
+    if (!clienteNombre || !clienteId) return
+
+    // Si solo hay un cliente, confirmar directamente (compatibilidad)
+    if (clientes.length <= 1) {
+      sendMessage({ type: 'CONFIRMAR_PEDIDO', payload: {} })
+      toast.success('¡Pedido enviado a cocina!', { icon: <ChefHat className="w-5 h-5" /> })
+      cerrarCarrito()
+      return
+    }
+
+    // Iniciar confirmación grupal
+    sendMessage({
+      type: 'INICIAR_CONFIRMACION',
+      payload: { clienteId, clienteNombre }
+    })
+    cerrarCarrito()
+  }
+
+  // Confirmar mi parte en la confirmación grupal
+  const confirmarMiParte = () => {
+    if (!clienteId) return
+    sendMessage({
+      type: 'USUARIO_CONFIRMO',
+      payload: { clienteId }
+    })
+  }
+
+  // Cancelar la confirmación grupal
+  const cancelarConfirmacion = () => {
+    if (!clienteId || !clienteNombre) return
+    sendMessage({
+      type: 'USUARIO_CANCELO',
+      payload: { clienteId, clienteNombre }
+    })
+  }
+
+  // Efecto para abrir/cerrar el modal de confirmación grupal
+  useEffect(() => {
+    if (confirmacionGrupal?.activa) {
+      setConfirmacionGrupalOpen(true)
+    } else {
+      setConfirmacionGrupalOpen(false)
+    }
+  }, [confirmacionGrupal?.activa])
+
+  useEffect(() => {
+    if (confirmacionCancelada) {
+      toast.error(`${confirmacionCancelada.canceladoPor} canceló la confirmación`, {
+        duration: 3000,
+      })
+      clearConfirmacionCancelada()
+    }
+  }, [confirmacionCancelada, clearConfirmacionCancelada])
+
+  // Verificar si el usuario actual ya confirmó
+  const yaConfirme = confirmacionGrupal?.confirmaciones.find(c => c.clienteId === clienteId)?.confirmado ?? false
+  const totalConfirmados = confirmacionGrupal?.confirmaciones.filter(c => c.confirmado).length ?? 0
+  const totalClientes = confirmacionGrupal?.confirmaciones.length ?? 0
+  const todosConfirmaron = esSala && totalClientes > 0 && totalConfirmados === totalClientes
+
+  // Fallback: cuando todos confirmaron en sala, poll por el pedido creado (por si el WS no llega)
+  useEffect(() => {
+    if (!todosConfirmaron || !urlQrToken) return
+    const token = urlQrToken
+    const poll = async () => {
+      try {
+        const url = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+        const res = await fetch(`${url}/public/sala/${token}/order-created`)
+        const data = await res.json()
+        if (data.success && data.order) {
+          sessionStorage.setItem('salaOrderInfo', JSON.stringify({
+            token: data.order.token,
+            pedidoId: data.order.pedidoId,
+            tipoPedido: data.order.tipoPedido,
+            total: data.order.total,
+            items: data.order.items,
+            aliasDinamico: data.order.aliasDinamico,
+            cvuDinamico: data.order.cvuDinamico,
+            deliveryFee: data.order.deliveryFee,
+            zonaNombre: data.order.zonaNombre,
+            direccion: data.order.direccion,
+            metodoPago: 'transferencia',
+          }))
+          window.location.href = `/sala/${data.order.token}/success`
+        }
+      } catch { /* ignore */ }
+    }
+    const t = setTimeout(poll, 500)
+    const interval = setInterval(poll, 1500)
+    return () => {
+      clearTimeout(t)
+      clearInterval(interval)
+    }
+  }, [todosConfirmaron, urlQrToken])
+
+  const todosLosItems = wsState?.items || []
+  const totalPedido = wsState?.total || '0.00'
+
+  // Guardar tema cuando el restaurante tiene colores propios
+  const token = urlQrToken || qrToken
+  useEffect(() => {
+    if (!restaurante?.colorPrimario || !restaurante?.colorSecundario || !token) return
+    const key = esSala ? `theme_sala_${token}` : `theme_mesa_${token}`
+    sessionStorage.setItem(key, JSON.stringify({
+      primario: restaurante.colorPrimario,
+      secundario: restaurante.colorSecundario
+    }))
+    // También guardar con username para que MenuDelivery y Menu compartan tema
+    if (restaurante.username) {
+      sessionStorage.setItem(`theme_${restaurante.username}`, JSON.stringify({
+        primario: restaurante.colorPrimario,
+        secundario: restaurante.colorSecundario
+      }))
+    }
+  }, [restaurante?.colorPrimario, restaurante?.colorSecundario, restaurante?.username, token, esSala])
+
+  // Si tenemos token pero no tema (ej: llegó por link compartido sin pasar por Nombre), fetchear para obtener colores
+  useEffect(() => {
+    if (!token || !isHydrated) return
+    const hasTheme = (restaurante?.colorPrimario && restaurante?.colorSecundario) ||
+      sessionStorage.getItem(esSala ? `theme_sala_${token}` : `theme_mesa_${token}`) ||
+      (restaurante?.username && sessionStorage.getItem(`theme_${restaurante.username}`))
+    if (hasTheme) return
+
+    const fetchTheme = async () => {
+      try {
+        const response = await mesaApi.join(token) as { success?: boolean; data?: any }
+        if (response.success && response.data?.restaurante) {
+          const rest = response.data.restaurante
+          setRestaurante(rest)
+          if (rest.colorPrimario && rest.colorSecundario) {
+            const key = esSala ? `theme_sala_${token}` : `theme_mesa_${token}`
+            sessionStorage.setItem(key, JSON.stringify({ primario: rest.colorPrimario, secundario: rest.colorSecundario }))
+            if (rest.username) {
+              sessionStorage.setItem(`theme_${rest.username}`, JSON.stringify({ primario: rest.colorPrimario, secundario: rest.colorSecundario }))
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    fetchTheme()
+  }, [token, isHydrated, esSala])
+
+  // Claves de tema: sala/mesa primero; fallback a theme_${username} (como MenuDelivery) por si vino de /alfajor
+  const themeKeySalaMesa = token ? (esSala ? `theme_sala_${token}` : `theme_mesa_${token}`) : null
+  const themeKeyUsername = restaurante?.username ? `theme_${restaurante.username}` : null
+  const cachedThemeStr = themeKeySalaMesa ? sessionStorage.getItem(themeKeySalaMesa) : null
+  const cachedThemeUsername = themeKeyUsername ? sessionStorage.getItem(themeKeyUsername) : null
+  const cachedTheme = cachedThemeStr ? JSON.parse(cachedThemeStr) : (cachedThemeUsername ? JSON.parse(cachedThemeUsername) : null)
+  const primario = restaurante?.colorPrimario || cachedTheme?.primario
+  const secundario = restaurante?.colorSecundario || cachedTheme?.secundario
+
+  const themeStyles = (primario && secundario) ? (
+    <style dangerouslySetInnerHTML={{
+      __html: `
+      :root {
+        --background: ${secundario};
+        --foreground: ${primario};
+        --card: ${secundario};
+        --card-foreground: ${primario};
+        --popover: ${secundario};
+        --popover-foreground: ${primario};
+        --primary: ${primario};
+        --primary-foreground: ${secundario};
+        --secondary: ${primario}18;
+        --secondary-foreground: ${primario};
+        --muted: ${primario}15;
+        --muted-foreground: ${primario}99;
+        --border: ${primario}30;
+        --input: ${primario}30;
+      }
+      .dark {
+        --background: ${primario};
+        --foreground: ${secundario};
+        --card: ${primario};
+        --card-foreground: ${secundario};
+        --popover: ${primario};
+        --popover-foreground: ${secundario};
+        --primary: ${secundario};
+        --primary-foreground: ${primario};
+        --secondary: ${secundario}18;
+        --secondary-foreground: ${secundario};
+        --muted: ${secundario}15;
+        --muted-foreground: ${secundario}b3;
+        --border: ${secundario}30;
+        --input: ${secundario}30;
+      }
+    `}} />
+  ) : null
+
+  return (
+    <div className="min-h-screen pb-32 bg-background font-sans selection:bg-primary/20">
+      {themeStyles}
+
+      {/* --- HEADER --- */}
+      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border/50 supports-backdrop-filter:bg-background/60">
+        <div className="max-w-2xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/50">
+              {isConnected ? <Wifi className="w-3.5 h-3.5 text-green-500" /> : <WifiOff className="w-3.5 h-3.5 text-destructive" />}
+              <span className="text-xs font-medium text-muted-foreground hidden sm:inline-block">{mesa?.nombre}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-5 pt-4 space-y-6">
+
+        {/* --- SECCIÓN BIENVENIDA & USUARIOS --- */}
+        <section className="space-y-4">
+          <div className="flex items-end justify-between px-1">
+            <div>
+              <p className="text-sm text-muted-foreground font-medium mb-0.5">Bienvenido,</p>
+              <h1 className="text-3xl font-extrabold tracking-tight text-primary">
+                {clienteNombre}
+              </h1>
+            </div>
+            <div className="text-right">
+              {restaurante?.esCarrito && pedido?.nombrePedido ? (
+                <>
+                  <span className="text-xs font-semibold text-primary uppercase tracking-wider block">Pedido</span>
+                  <span className="text-sm font-medium">de {pedido.nombrePedido}</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Pedido</span>
+                  <span className="text-sm font-medium">{mesa?.nombre}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Lista de Usuarios */}
+          <div>
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                En el pedido:
+              </p>
+            </div>
+
+            <div className="flex -mx-5 pl-5 overflow-x-auto scrollbar-hide py-2 gap-4 snap-x">
+              {/* Usuario actual */}
+              <div className="flex flex-col items-center gap-1.5 min-w-[56px] snap-start">
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-xl border-2 shadow-sm ring-2 ring-background bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center">
+                    YO
+                  </div>
+                </div>
+                <span className="text-xs font-medium truncate max-w-[60px] text-center">Tú</span>
+              </div>
+
+              {/* Botón compartir si es sala */}
+              {window.location.pathname.includes('/sala/') && (
+                <div className="flex flex-col items-center gap-1.5 min-w-[56px] snap-start" onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast.success('¡Link copiado al portapapeles!');
+                }}>
+                  <div className="relative cursor-pointer hover:scale-105 transition-transform">
+                    <div className="w-12 h-12 rounded-xl border-2 shadow-sm border-primary/30 bg-primary/10 text-primary flex items-center justify-center">
+                      <LinkIcon className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <span className="text-xs font-medium text-primary text-center cursor-pointer">Compartir</span>
+                </div>
+              )}
+
+              {/* Otros usuarios */}
+              {clientes.filter(c => c.nombre !== clienteNombre).map((cliente) => (
+                <div key={cliente.id} className="flex flex-col items-center gap-1.5 min-w-[56px] snap-start opacity-80 hover:opacity-100 transition-opacity">
+                  <div className="w-12 h-12 rounded-xl border border-border shadow-xs bg-secondary text-foreground text-xs font-medium flex items-center justify-center">
+                    {cliente.nombre.slice(0, 2).toUpperCase()}
+                  </div>
+                  <span className="text-xs text-muted-foreground truncate max-w-[60px] text-center">
+                    {cliente.nombre}
+                  </span>
+                </div>
+              ))}
+
+              {clientes.length === 1 && (
+                <div className="flex items-center justify-center pl-2">
+                  <p className="text-xs text-muted-foreground italic">Esperando...</p>
+                </div>
+              )}
+
+              <div className="min-w-5 shrink-0"></div>
+            </div>
+          </div>
+        </section>
+
+        {/* --- MENSAJE EXPLICANDO DE QUE DEBEN SELECCIONAR LOS PRODUCTOS Y CONFIRMAR EL PEDIDO  --- */}
+        <section className="space-y-3 py-4 px-4 bg-secondary/50 rounded-lg">
+          <p className="text-sm font-medium">
+            {restaurante?.soloCartaDigital
+              ? 'Arma tu pedido aquí para leerle fácilmente a la caja o al mozo lo que elegiste cuando vayas a pedir.'
+              : 'Selecciona los productos y confirma el pedido para enviarlo a la caja/cocina.'}
+          </p>
+        </section>
+
+        {/* --- CATEGORÍAS --- */}
+        {categorias.length > 1 && (
+          <section className="space-y-3 pt-2">
+            <h2 className="text-lg font-bold text-foreground px-1">Categorías</h2>
+            <div className="flex gap-2 overflow-x-auto pb-2 mx-2 scrollbar-hide snap-x">
+              {categorias.map((category) => (
+                <Button
+                  key={category}
+                  onClick={() => setSelectedCategory(category || 'All')}
+                  variant={selectedCategory === category ? "default" : "secondary"}
+                  className={`rounded-lg px-5 h-10 text-xs font-medium whitespace-nowrap snap-start transition-all ${selectedCategory === category
+                    ? "shadow-md"
+                    : "bg-secondary/50 hover:bg-secondary border border-transparent"
+                    }`}
+                >
+                  {category === 'All' ? 'Todas' : category}
+                </Button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* --- PRODUCTOS --- */}
+        <section className="space-y-8 min-h-[50vh]">
+          {selectedCategory === 'All' ? (
+            categoriasOrdenadas.length > 0 ? (
+              categoriasOrdenadas.map((categoriaNombre) => {
+                const productosDeCategoria = productosPorCategoria[categoriaNombre]
+                if (!productosDeCategoria || productosDeCategoria.length === 0) return null
+
+                return (
+                  <div key={categoriaNombre} className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">
+                      {categoriaNombre}
+                    </h3>
+                    <div className="flex gap-4 overflow-x-auto pb-3  ml-2 scrollbar-hide snap-x snap-mandatory">
+                      {productosDeCategoria.map((producto) => (
+                        <ProductoCard
+                          key={producto.id}
+                          producto={producto}
+                          onClick={() => abrirDetalleProducto(producto)}
+                          disenoAlternativo={restaurante?.disenoAlternativo!}
+                        />
+                      ))}
+                      {/* Spacer for last item padding */}
+                      <div className="min-w-1 shrink-0" />
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <EmptyState />
+            )
+          ) : (
+            productosFiltrados.length > 0 ? (
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">
+                  {selectedCategory}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-1">
+                  {productosFiltrados.map((producto) => (
+                    <ProductoCard
+                      key={producto.id}
+                      producto={producto}
+                      onClick={() => abrirDetalleProducto(producto)}
+                      disenoAlternativo={restaurante?.disenoAlternativo!}
+                      fullWidth
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <EmptyState />
+            )
+          )}
+        </section>
+      </div>
+
+      {/* --- BOTÓN FLOTANTE CARRITO --- */}
+      <div className={`fixed bottom-6 left-0 right-0 flex justify-center z-40 transition-all duration-500 ${todosLosItems.length > 0 ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0'}`}>
+        <button
+          onClick={abrirCarrito}
+          className={`
+            group relative flex items-center gap-4 pl-5 pr-6 py-3.5 rounded-full 
+            shadow-2xl hover:scale-[1.02] active:scale-95 transition-all duration-300
+            bg-zinc-900 text-white shadow-zinc-900/20
+            dark:bg-white/10 dark:text-white dark:backdrop-blur-xl 
+            dark:border dark:border-white/10 dark:shadow-[0_0_20px_rgba(255,255,255,0.05)]
+          `}
+        >
+          <div className="absolute -top-2 -right-1 bg-red-500 text-white text-[10px] font-bold h-5 min-w-[20px] px-1 flex items-center justify-center rounded-full border-2 border-background z-10">
+            {todosLosItems.length}
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <Receipt className="w-5 h-5 text-current opacity-90" />
+            <span className="font-semibold text-sm tracking-wide">Ver Pedido</span>
+          </div>
+
+          <div className="h-4 w-px bg-current opacity-20"></div>
+
+          <span className="font-bold text-base font-mono">
+            ${totalPedido}
+          </span>
+        </button>
+      </div>
+
+      {/* --- DRAWER DEL PEDIDO --- */}
+      <Sheet open={carritoAbierto} onOpenChange={(open) => !open && cerrarCarrito()}>
+        <SheetContent side="right" className="w-full sm:max-w-md p-0 border-l-0 sm:border-l bg-background">
+          <div className="flex flex-col h-full">
+            <div className="px-5 py-4 flex items-center gap-4 border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10">
+              <Button variant="ghost" size="icon" className="rounded-full -ml-2 hover:bg-secondary" onClick={cerrarCarrito}>
+                <ArrowLeft className="w-6 h-6" />
+              </Button>
+              <div>
+                <SheetTitle className="text-xl">Tu Pedido</SheetTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Pedido {mesa?.nombre} • {todosLosItems.length} items</p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4">
+              {mostrarCheckoutEnCarrito && esSala ? (
+                <div className="space-y-4">
+                  <Button variant="ghost" size="sm" className="-ml-2 -mt-2" onClick={() => setMostrarCheckoutEnCarrito(false)}>
+                    <ArrowLeft className="w-4 h-4 mr-1" />
+                    Volver al pedido
+                  </Button>
+                  <CheckoutDeliveryGrupal
+                    restauranteId={restaurante?.id ?? 0}
+                    itemsTotal={totalPedido}
+                    totalItems={todosLosItems.length}
+                    onConfirmarClick={iniciarConfirmacionPedido}
+                    sendMessage={sendMessage}
+                    clienteId={clienteId ?? ''}
+                    clienteNombre={clienteNombre ?? ''}
+                    checkoutData={checkoutDeliveryData}
+                    editSemaphore={checkoutEditSemaphore}
+                    restauranteDireccion={restaurante?.direccion ?? undefined}
+                  />
+                </div>
+              ) : todosLosItems.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-60">
+                  <div className="bg-secondary p-6 rounded-full">
+                    <UtensilsCrossed className="w-10 h-10" />
+                  </div>
+                  <p className="font-medium">El pedido está vacío.</p>
+                  <Button variant="link" onClick={cerrarCarrito}>Ir al menú</Button>
+                </div>
+              ) : (
+                <>
+                {todosLosItems.map((item) => {
+                  const esMio = item.clienteNombre === clienteNombre;
+                  const prodOriginal = productos.find(p => p.id === (item.productoId || item.id));
+                  const imagen = item.imagenUrl || prodOriginal?.imagenUrl;
+                  const precio = parseFloat(item.precioUnitario || String(item.precio || 0));
+
+                  return (
+                    <div key={item.id} className={`relative flex gap-4 p-3 rounded-2xl border transition-all ${esMio ? 'bg-card border-primary/20 shadow-sm' : 'bg-secondary/30 border-transparent opacity-90 grayscale-[0.3]'
+                      }`}>
+                      <div className="w-20 h-20 shrink-0 rounded-xl overflow-hidden bg-secondary">
+                        {imagen ? (
+                          <img src={imagen} alt="img" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                            <Utensils className="w-6 h-6 text-primary" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 flex flex-col justify-between py-0.5 min-w-0">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm truncate">{item.nombreProducto || item.nombre}</p>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <Badge variant="secondary" className={`h-5 text-[10px] px-1.5 font-normal rounded-md ${esMio ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300' : ''}`}>
+                                {esMio ? 'Tú' : item.clienteNombre}
+                              </Badge>
+                            </div>
+                            {(item as any).ingredientesExcluidosNombres?.length > 0 && (
+                              <p className="text-xs text-primary font-medium mt-1">
+                                ⚠️ Sin: {(item as any).ingredientesExcluidosNombres.join(', ')}
+                              </p>
+                            )}
+                            {(item as any).agregados?.length > 0 && (
+                              <div className="mt-1">
+                                {(item as any).agregados.map((ag: any) => (
+                                  <p key={ag.id} className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                                    <span>+ {ag.nombre || 'Extra'}</span>
+                                    {ag.precio && parseFloat(ag.precio) > 0 && (
+                                      <span className="text-primary/80">(+${parseFloat(ag.precio).toFixed(0)})</span>
+                                    )}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <p className="font-bold text-base">${(precio * item.cantidad).toFixed(2)}</p>
+                        </div>
+
+                        {esMio ? (
+                          <div className="flex items-center justify-end gap-3 mt-2">
+
+                            <button onClick={() => handleEliminarItem(item.id)} className="w-8 h-8 flex items-center justify-center rounded-full bg-destructive/10 text-destructive hover:bg-destructive hover:text-white transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+
+                          </div>
+                        ) : (
+                          <div className="flex justify-end mt-2">
+                            <span className="text-xs text-muted-foreground">x{item.cantidad} unidades</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                </>
+              )}
+            </div>
+
+            {(todosLosItems.length > 0 && !mostrarCheckoutEnCarrito) && (
+              <div className="p-5 bg-background border-t border-border shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-20">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-muted-foreground text-sm">Total a pagar</span>
+                  <span className="text-2xl font-black tracking-tight">${totalPedido}</span>
+                </div>
+                {!restaurante?.soloCartaDigital && (
+                  <Button className="w-full h-14 text-base font-bold rounded-2xl shadow-lg shadow-primary/20" size="lg" onClick={handleBotonPrincipalCarrito}>
+                    {esSala ? 'Continuar' : 'Confirmar Pedido'}
+                    <ArrowLeft className="w-5 h-5 ml-2 rotate-180" />
+                  </Button>
+                )}
+                {restaurante?.soloCartaDigital && (
+                  <div className="text-center text-sm font-medium text-primary py-3 bg-primary/10 rounded-xl">
+                    Léele tu pedido al mozo o a la caja 😊
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <ProductDetailDrawer
+        product={selectedProduct ? { ...selectedProduct, categoria: selectedProduct.categoria ?? undefined } : null}
+        open={drawerOpen}
+        onClose={cerrarProductoDrawer}
+        onAddToOrder={agregarAlPedido}
+      />
+
+
+      {/* --- MODAL DE CONFIRMACIÓN GRUPAL --- */}
+      <Dialog open={confirmacionGrupalOpen} onOpenChange={() => { }}>
+        <DialogContent className="max-w-sm rounded-2xl p-4 sm:p-5 max-h-[85dvh] flex flex-col" onPointerDownOutside={(e) => e.preventDefault()}>
+          <DialogHeader className="text-center shrink-0">
+            <div className="mx-auto w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-primary/10 flex items-center justify-center mb-2 sm:mb-3">
+              <Users className="w-6 h-6 sm:w-7 sm:h-7 text-primary" />
+            </div>
+            <DialogTitle className="text-lg sm:text-xl">Confirmación del Pedido</DialogTitle>
+            <DialogDescription className="text-center pt-1 text-sm">
+              {confirmacionGrupal?.iniciadaPorNombre === clienteNombre
+                ? 'Esperando que todos confirmen...'
+                : `${confirmacionGrupal?.iniciadaPorNombre} quiere confirmar`
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Resumen del pedido (sala: datos de envío) - compacto */}
+          {esSala && checkoutDeliveryData && (
+            <div className="mt-2 sm:mt-3 p-3 rounded-xl bg-secondary/50 border border-border/50 space-y-1 text-left shrink-0 overflow-hidden">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Resumen</p>
+              <p className="text-xs truncate"><span className="text-muted-foreground">Nombre:</span> {checkoutDeliveryData.nombre}</p>
+              <p className="text-xs truncate"><span className="text-muted-foreground">Celular:</span> {checkoutDeliveryData.telefono}</p>
+              {checkoutDeliveryData.tipoPedido === 'delivery' && (
+                <p className="text-xs truncate"><span className="text-muted-foreground">Dirección:</span> {checkoutDeliveryData.direccion}</p>
+              )}
+              {checkoutDeliveryData.tipoPedido === 'delivery' && checkoutDeliveryData.deliveryFee > 0 && (
+                <p className="text-xs"><span className="text-muted-foreground">Envío:</span> ${checkoutDeliveryData.deliveryFee.toFixed(2)}</p>
+              )}
+              <p className="text-sm font-bold pt-1.5 border-t border-border/50">Total: ${checkoutDeliveryData.total}</p>
+            </div>
+          )}
+
+          {/* Lista de usuarios - scroll interno si hace falta */}
+          <div className="mt-2 sm:mt-3 min-h-0 flex-1 overflow-y-auto">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-center mb-2">
+              {totalConfirmados}/{totalClientes} confirmados
+              {todosConfirmaron && <span className="block text-primary font-normal normal-case mt-1">Procesando pedido...</span>}
+            </p>
+
+            <div className="flex flex-wrap justify-center gap-2 sm:gap-3 py-2">
+              {confirmacionGrupal?.confirmaciones.map((conf) => {
+                const esYo = conf.clienteId === clienteId
+                return (
+                  <div key={conf.clienteId} className="flex flex-col items-center gap-1">
+                    <div className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-lg border-2 shadow-sm flex items-center justify-center font-bold text-xs transition-all duration-300 ${conf.confirmado
+                      ? 'bg-primary border-primary text-primary-foreground ring-2 ring-primary/30'
+                      : 'bg-zinc-200 dark:bg-zinc-700 border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400'
+                      }`}>
+                      {conf.nombre.slice(0, 2).toUpperCase()}
+                      {conf.confirmado && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 text-white" />
+                        </div>
+                      )}
+                      {!conf.confirmado && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-zinc-400 dark:bg-zinc-500 rounded-full flex items-center justify-center">
+                          <Loader2 className="w-2.5 h-2.5 text-white animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <span className={`text-[10px] font-medium truncate max-w-[48px] sm:max-w-[56px] text-center ${esYo ? 'text-foreground' : 'text-muted-foreground'
+                      }`}>
+                      {esYo ? 'Tú' : conf.nombre}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col gap-2 shrink-0 mt-3 pt-3 border-t border-border/50">
+            {!yaConfirme ? (
+              <>
+                <Button
+                  size="sm"
+                  onClick={confirmarMiParte}
+                  className="w-full h-11 rounded-xl font-semibold bg-primary hover:bg-primary/90"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Confirmar mi pedido
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelarConfirmacion}
+                  className="w-full h-10 rounded-xl text-destructive hover:bg-destructive/10"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancelar
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="w-full py-2 px-3 rounded-xl bg-primary/10 text-center">
+                  <p className="text-xs font-medium text-primary">
+                    ✓ Ya confirmaste. Esperando a los demás...
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelarConfirmacion}
+                  className="w-full h-10 rounded-xl text-destructive hover:bg-destructive/10"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancelar para todos
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+    </div>
+  )
+}
+
+// Componentes auxiliares para limpiar el render
+const EmptyState = () => (
+  <div className="flex flex-col items-center justify-center py-20 text-muted-foreground opacity-50">
+    <Package className="w-10 h-10 mb-2" />
+    <p className="text-sm">Sin productos disponibles.</p>
+  </div>
+)
+
+const ProductoCard = ({ producto, onClick, fullWidth, disenoAlternativo }: { producto: any, onClick: () => void, fullWidth?: boolean, disenoAlternativo?: boolean }) => {
+  const tieneDescuento = !!(producto.descuento && producto.descuento > 0)
+  const precioOriginal = parseFloat(producto.precio)
+  const precioFinal = tieneDescuento ? precioOriginal * (1 - producto.descuento / 100) : precioOriginal
+
+  if (disenoAlternativo) {
+      return (
+          <div
+              className={`group relative flex flex-col ${fullWidth ? 'w-full' : 'w-48 shrink-0'} h-[260px] rounded-[24px] bg-card border border-border/50 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] overflow-hidden ${!fullWidth ? 'snap-start' : ''}`}
+              onClick={onClick}
+          >
+              <div className="w-full h-[130px] shrink-0 bg-zinc-900 relative">
+                  {producto.imagenUrl ? (
+                      <img
+                          src={producto.imagenUrl}
+                          alt={producto.nombre}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                      />
+                  ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-zinc-800 to-zinc-900">
+                          <Utensils className="w-10 h-10 text-primary" />
+                      </div>
+                  )}
+                  {tieneDescuento && (
+                      <div className="absolute top-2.5 left-2.5 z-10">
+                          <span className="bg-emerald-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-lg uppercase tracking-wide">
+                              {producto.descuento}% OFF
+                          </span>
+                      </div>
+                  )}
+              </div>
+
+              <div className="p-3.5 flex flex-col flex-1 bg-card">
+                  <div className="flex-1">
+                      <h3 className="font-bold text-[14px] line-clamp-2 text-foreground leading-tight">
+                          {producto.nombre}
+                      </h3>
+                      {producto.descripcion && (
+                          <p className="mt-1 text-xs text-muted-foreground line-clamp-2 leading-snug font-medium">
+                              {producto.descripcion}
+                          </p>
+                      )}
+                  </div>
+
+                  <div className="flex items-baseline gap-1.5 mt-2">
+                      <span className={`font-black text-[17px] ${tieneDescuento ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'}`}>
+                          ${precioFinal.toFixed(0)}
+                      </span>
+                      {tieneDescuento && (
+                          <span className="text-[11px] font-semibold text-muted-foreground line-through opacity-70">
+                              ${precioOriginal.toFixed(0)}
+                          </span>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )
+  }
+
+  return (
+      <div
+          className={`group relative ${fullWidth ? 'w-full' : 'w-44 shrink-0'} h-52 rounded-3xl overflow-hidden cursor-pointer ${!fullWidth ? 'snap-start' : ''} shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]`}
+          onClick={onClick}
+      >
+          <div className="absolute inset-0 bg-zinc-900">
+              {producto.imagenUrl ? (
+                  <img
+                      src={producto.imagenUrl}
+                      alt={producto.nombre}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
+                  />
+              ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-zinc-800 to-zinc-900">
+                      <Utensils className="w-12 h-12 text-primary" />
+                  </div>
+              )}
+          </div>
+          <div className="absolute inset-0 bg-linear-to-t from-black/90 via-transparent to-transparent" />
+          {tieneDescuento && (
+              <div className="absolute top-2.5 left-2.5 z-10">
+                  <span className="bg-emerald-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-lg uppercase tracking-wide">
+                      {producto.descuento}% OFF
+                  </span>
+              </div>
+          )}
+          <div className="absolute bottom-0 left-0 right-0 p-3.5">
+              <div className="rounded-2xl p-3 bg-white/70 dark:bg-white/10 backdrop-blur-md border border-white/30 dark:border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+                  <h3 className="font-semibold text-sm text-zinc-900 dark:text-white truncate leading-tight">
+                      {producto.nombre}
+                  </h3>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                      <span className={`font-bold text-lg ${tieneDescuento ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-800 dark:text-white/90'}`}>
+                          ${precioFinal.toFixed(0)}
+                      </span>
+                      {tieneDescuento && (
+                          <span className="text-xs text-zinc-500 dark:text-white/40 line-through">
+                              ${precioOriginal.toFixed(0)}
+                          </span>
+                      )}
+                  </div>
+              </div>
+          </div>
+      </div>
+  )
+}
+
+export default Menu
