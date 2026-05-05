@@ -18,7 +18,7 @@ const Factura = () => {
     hour: '2-digit',
     minute: '2-digit'
   })
-
+//
   // Ref para el recibo que vamos a capturar
   const reciboRef = useRef<HTMLDivElement>(null)
   const [isDownloading, setIsDownloading] = useState(false)
