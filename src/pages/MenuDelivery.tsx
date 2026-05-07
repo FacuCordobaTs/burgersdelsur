@@ -524,20 +524,7 @@ const MenuDelivery = () => {
 
         bumpCart()
 
-        toast.custom(
-            () => (
-                <DeliveryAddCloneToast
-                    template={newItem}
-                    puntosCliente={puntosCliente}
-                    setCartItems={setCartItems}
-                    bumpCart={bumpCart}
-                />
-            ),
-            {
-                id: DELIVERY_ADD_CLONE_TOAST_ID,
-                duration: 14_000,
-            }
-        )
+        // Toast de "Agregar otro igual" removido a pedido del cliente
     }
 
     const handleEliminarItem = (itemId: string) => {
