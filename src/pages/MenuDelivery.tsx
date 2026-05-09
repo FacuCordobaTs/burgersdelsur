@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { toast } from 'sonner'
 import {
     Trash2, ArrowLeft,
-    Package, Receipt, UtensilsCrossed, Utensils, Clock
+    Package, Receipt, UtensilsCrossed, Utensils, Clock, Sparkles, Check, X
 } from 'lucide-react'
 import { PIRU_API_URL } from '@/lib/api'
 import { ProductDetailDrawer } from '@/components/ProductDetailDrawer'
@@ -67,7 +68,12 @@ function checkIsOpen(horarios: HorarioTurno[]): { abierto: boolean; proximaApert
     return { abierto: false, proximaApertura: mejor?.texto || null }
 }
 
+const DELIVERY_ADD_CLONE_TOAST_ID = 'web-delivery-add-clone'
 
+const agregadoFlashUntilByLineId = new Map<string, number>()
+const AGREGADO_FLASH_MS = 600
+
+const CLONE_TOAST_SWIPE_DISMISS_PX = 72
 
 
 const TENANT_USERNAME = 'burgersdelsur'
