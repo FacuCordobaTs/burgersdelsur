@@ -644,6 +644,7 @@ const Menu = () => {
                   </Button>
                   <CheckoutDeliveryGrupal
                     restauranteId={restaurante?.id ?? 0}
+                    restauranteUsername={restaurante?.username ?? null}
                     itemsTotal={totalPedido}
                     totalItems={todosLosItems.length}
                     onConfirmarClick={iniciarConfirmacionPedido}
