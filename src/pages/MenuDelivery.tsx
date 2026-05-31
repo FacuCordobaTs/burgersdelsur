@@ -351,7 +351,7 @@ const MenuDelivery = () => {
 
     const confirmarPedido = () => {
         if (cartItems.length === 0) return
-        if (!estadoAbierto.abierto) {
+        if (!estadoAbierto.abierto && !restaurante?.permitirPedidosProgramados) {
             toast.error('El restaurante está cerrado en este momento')
             return
         }
@@ -482,11 +482,14 @@ const MenuDelivery = () => {
             </div>
 
             {!estadoAbierto.abierto && (
-                <div className="bg-red-600 text-white">
+                <div className={restaurante?.permitirPedidosProgramados ? "bg-amber-500 text-white" : "bg-red-600 text-white"}>
                     <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-center gap-2">
                         <Clock className="w-4 h-4 shrink-0" />
                         <p className="text-sm font-semibold text-center">
-                            Estamos cerrados{estadoAbierto.proximaApertura ? `. Abrimos ${estadoAbierto.proximaApertura}` : ''}
+                            {restaurante?.permitirPedidosProgramados
+                                ? 'Estamos cerrados. Podés programar tu pedido para después'
+                                : `Estamos cerrados${estadoAbierto.proximaApertura ? `. Abrimos ${estadoAbierto.proximaApertura}` : ''}`
+                            }
                         </p>
                     </div>
                 </div>
@@ -764,13 +767,13 @@ const MenuDelivery = () => {
                                     <span className="text-2xl font-black tracking-tight">${totalPedido}</span>
                                 </div>
                                 <Button
-                                    className={`w-full h-14 text-base font-bold rounded-2xl shadow-lg ${!estadoAbierto.abierto ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'shadow-primary/20 bg-primary hover:bg-primary/90 text-primary-foreground'}`}
+                                    className={`w-full h-14 text-base font-bold rounded-2xl shadow-lg ${!estadoAbierto.abierto && !restaurante?.permitirPedidosProgramados ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'shadow-primary/20 bg-primary hover:bg-primary/90 text-primary-foreground'}`}
                                     size="lg"
                                     onClick={confirmarPedido}
-                                    disabled={!estadoAbierto.abierto}
+                                    disabled={!estadoAbierto.abierto && !restaurante?.permitirPedidosProgramados}
                                 >
-                                    {!estadoAbierto.abierto ? 'Cerrado' : 'Continuar'}
-                                    {estadoAbierto.abierto && <ArrowLeft className="w-5 h-5 ml-2 rotate-180" />}
+                                    {!estadoAbierto.abierto && !restaurante?.permitirPedidosProgramados ? 'Cerrado' : 'Continuar'}
+                                    {(estadoAbierto.abierto || restaurante?.permitirPedidosProgramados) && <ArrowLeft className="w-5 h-5 ml-2 rotate-180" />}
                                 </Button>
                             </div>
                         )}
